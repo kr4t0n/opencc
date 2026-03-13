@@ -34,6 +34,20 @@ class GatewayRouter:
                 session_key = f"ask:{uuid.uuid4().hex[:8]}"
                 logger.info("ask: using ephemeral session_key=%s", session_key)
                 prompt = _build_prompt(body, message.images)
+            elif cmd == "btw":
+                # Clone the current session and send the message in the clone.
+                body = message.text[len(message.text.split()[0]) :].strip()
+                if not body:
+                    return "Usage: `/btw <message>` — send a side message using a cloned session."
+                prompt = _build_prompt(body, message.images)
+                try:
+                    response = await self.claude_manager.send_btw(session_key, prompt)
+                except RuntimeError as exc:
+                    logger.exception("btw session error for %s", session_key)
+                    response = f"Sorry, something went wrong.\n```\n{exc}\n```"
+                finally:
+                    _cleanup_images(message.images)
+                return response
             else:
                 return self._handle_command(message.text, session_key)
         else:
@@ -64,7 +78,8 @@ class GatewayRouter:
             "• `/help` — Show this message\n"
             "• `/stop` — Cancel the currently running Claude response\n"
             "• `/sessions` — List all active Claude Code sessions\n"
-            "• `/ask <message>` — Quick context-free reply (no session history)"
+            "• `/ask <message>` — Quick context-free reply (no session history)\n"
+            "• `/btw <message>` — Side message in a cloned session (preserves original)"
         )
 
     def _cmd_stop(self, session_key: str) -> str:

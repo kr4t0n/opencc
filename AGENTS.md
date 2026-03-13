@@ -148,7 +148,9 @@ Commands recognized by `GatewayRouter` when a message starts with `/`:
 |---|---|
 | `/help` | Lists available commands |
 | `/stop` | Terminates the current session's Claude process and removes the session |
-| `/btw <message>` | Sends a context-free ephemeral reply (no session persistence) |
+| `/sessions` | Lists all active Claude Code sessions |
+| `/ask <message>` | Sends a quick, context-free reply using an ephemeral session (no session persistence) |
+| `/btw <message>` | Sends a side message in a cloned session (original conversation is preserved) |
 
 Leading slashes in non-command messages are escaped to prevent Claude Code from interpreting them as skill invocations.
 

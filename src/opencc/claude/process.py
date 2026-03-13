@@ -4,9 +4,33 @@ import asyncio
 import json
 import logging
 import shlex
+import shutil
+import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def clone_session(work_dir: str, old_session_id: str, new_session_id: str) -> Path:
+    """Clone a Claude Code session by duplicating its JSONL file.
+
+    The working directory is normalised to match Claude Code's on-disk layout:
+    ``/home/kyle/projects`` → ``-home-kyle-projects``.
+
+    Returns the path to the newly created session file.
+    """
+    normalized = work_dir.replace("/", "-")
+    projects_dir = Path.home() / ".claude" / "projects" / normalized
+
+    src = projects_dir / f"{old_session_id}.jsonl"
+    if not src.exists():
+        raise FileNotFoundError(f"Source session file not found: {src}")
+
+    dst = projects_dir / f"{new_session_id}.jsonl"
+    shutil.copy2(src, dst)
+    logger.info("cloned session %s → %s", src, dst)
+    return dst
 
 
 @dataclass
@@ -123,6 +147,32 @@ class ClaudeProcessManager:
         if session is None:
             return False
         return session.cancel()
+
+    async def send_btw(self, session_key: str, prompt: str) -> str:
+        """Send a message in a cloned copy of an existing session.
+
+        Looks up the current session for *session_key*, clones its JSONL file
+        to a new session id, and resumes the prompt against the clone so the
+        original conversation history is preserved untouched.
+        """
+        session = self._sessions.get(session_key)
+        if session is None or session.session_id is None:
+            raise RuntimeError("No active session to branch from. Send a normal message first.")
+
+        new_session_id = str(uuid.uuid4())
+        clone_session(self.work_dir, session.session_id, new_session_id)
+
+        btw_session = ClaudeSession(
+            session_key=f"btw:{new_session_id[:8]}",
+            session_id=new_session_id,
+        )
+        return await btw_session.send(
+            prompt,
+            cli_path=self.cli_path,
+            work_dir=self.work_dir,
+            cli_args=self._cli_args,
+            extra_args=self._extra_args,
+        )
 
     def list_sessions(self) -> list[dict]:
         return [
