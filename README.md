@@ -106,6 +106,16 @@ After installing the app to your workspace you will need two tokens:
 | `GET` | `/health` | Health check |
 | `GET` | `/sessions` | List active Claude Code sessions |
 
+## Slash Commands
+
+Messages that start with `/` are handled as gateway commands instead of being forwarded to Claude Code.
+
+| Command | Description |
+|---|---|
+| `/help` | Show the list of available commands |
+| `/stop` | Cancel the currently running Claude response |
+| `/btw <message>` | Send a quick, context-free reply without session history |
+
 ## Adding New Adapters
 
 Subclass `IMAdapter` in `src/opencc/adapters/base.py` and implement `start`, `stop`, and `send_message`. Register the adapter in `src/opencc/main.py` alongside the existing `SlackAdapter`.
