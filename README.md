@@ -25,6 +25,49 @@ Slack ──► SlackAdapter ──► GatewayRouter ──► ClaudeProcessMana
 - [uv](https://docs.astral.sh/uv/) (package manager)
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 
+## Slack App Setup
+
+Create a new Slack app at [api.slack.com/apps](https://api.slack.com/apps) and configure the following permissions and features.
+
+### Required Bot Token Scopes
+
+These scopes must be added under **OAuth & Permissions → Bot Token Scopes**:
+
+| Scope | Why it's needed |
+|---|---|
+| `app_mentions:read` | Allows the bot to receive `app_mention` events when a user mentions it in a channel or thread |
+| `chat:write` | Allows the bot to post Claude's responses back to channels and threads via `chat_postMessage` |
+| `files:read` | Allows the bot to download image attachments that users include in their messages, so they can be forwarded to Claude |
+
+### Event Subscriptions
+
+Enable **Event Subscriptions** and subscribe to the following bot events:
+
+| Event | Description |
+|---|---|
+| `app_mention` | Fires when a user mentions the bot (e.g. `@opencc fix this bug`). This is the only event the gateway listens to. |
+
+### Socket Mode
+
+opencc uses **Socket Mode** so the bot communicates over WebSocket — no public URL or ingress is required.
+
+1. Go to **Settings → Socket Mode** and enable it.
+2. Generate an **App-Level Token** with the `connections:write` scope. This produces a token starting with `xapp-` that you will set as `SLACK_APP_TOKEN`.
+
+### Tokens
+
+After installing the app to your workspace you will need two tokens:
+
+| Token | Format | Where to find it |
+|---|---|---|
+| **Bot Token** | `xoxb-...` | **OAuth & Permissions → Bot User OAuth Token** |
+| **App-Level Token** | `xapp-...` | **Settings → Basic Information → App-Level Tokens** |
+
+### Install the App
+
+1. Go to **Install App** and click **Install to Workspace**.
+2. Invite the bot to any channels where you want to use it (e.g. `/invite @opencc`).
+
 ## Setup
 
 1. **Install dependencies**
