@@ -4,11 +4,10 @@ import logging
 import os
 import re
 import tempfile
-from typing import Optional
 
 import aiohttp
-from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+from slack_bolt.async_app import AsyncApp
 
 from opencc.adapters.base import IMAdapter, Message, MessageHandler
 
@@ -33,8 +32,8 @@ class SlackAdapter(IMAdapter):
         self._app = AsyncApp(token=bot_token)
         self._bot_token = bot_token
         self._app_token = app_token
-        self._handler: Optional[AsyncSocketModeHandler] = None
-        self._message_handler: Optional[MessageHandler] = None
+        self._handler: AsyncSocketModeHandler | None = None
+        self._message_handler: MessageHandler | None = None
 
     async def start(self, handler: MessageHandler) -> None:
         self._message_handler = handler

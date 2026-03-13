@@ -17,6 +17,16 @@ dependencies = [
 [project.scripts]
 opencc = "opencc.main:cli"
 
+[dependency-groups]
+dev = ["ruff"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
 [build-system]
 requires = ["uv_build>=0.10.9,<0.11.0"]
 build-backend = "uv_build"

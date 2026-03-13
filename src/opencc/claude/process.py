@@ -5,7 +5,6 @@ import json
 import logging
 import shlex
 from dataclasses import dataclass, field
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +14,9 @@ class ClaudeSession:
     """Tracks a single Claude Code conversation backed by the CLI."""
 
     session_key: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
-    _proc: Optional[asyncio.subprocess.Process] = field(default=None, repr=False)
+    _proc: asyncio.subprocess.Process | None = field(default=None, repr=False)
 
     async def send(
         self,
@@ -78,7 +77,7 @@ class ClaudeSession:
             payload = json.loads(raw)
         except json.JSONDecodeError:
             logger.error("failed to parse claude output: %s", raw[:500])
-            raise RuntimeError("Could not parse Claude Code JSON output")
+            raise RuntimeError("Could not parse Claude Code JSON output") from None
 
         if payload.get("is_error"):
             raise RuntimeError(f"Claude Code error: {payload.get('result', 'unknown')}")
