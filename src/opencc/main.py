@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
+import uvicorn
+from fastapi import FastAPI
+
+from opencc.adapters.slack import SlackAdapter
+from opencc.claude.process import ClaudeProcessManager
+from opencc.config import get_settings
+from opencc.gateway.router import GatewayRouter
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    settings = get_settings()
+
+    claude_manager = ClaudeProcessManager(
+        cli_path=settings.claude_cli_path,
+        work_dir=settings.claude_work_dir,
+    )
+    router = GatewayRouter(claude_manager)
+    slack_adapter = SlackAdapter(
+        bot_token=settings.slack_bot_token,
+        app_token=settings.slack_app_token,
+    )
+
+    app.state.claude_manager = claude_manager
+    app.state.router = router
+    app.state.slack_adapter = slack_adapter
+
+    await slack_adapter.start(router.handle)
+    logger.info("opencc gateway is up")
+
+    yield
+
+    await slack_adapter.stop()
+    await claude_manager.cleanup()
+    logger.info("opencc gateway shut down")
+
+
+app = FastAPI(title="opencc", lifespan=lifespan)
+
+
+@app.get("/health")
+async def health() -> dict:
+    return {"status": "ok"}
+
+
+@app.get("/sessions")
+async def sessions() -> list[dict]:
+    return app.state.claude_manager.list_sessions()
+
+
+def cli() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    settings = get_settings()
+    uvicorn.run(
+        "opencc.main:app",
+        host=settings.host,
+        port=settings.port,
+        log_level="info",
+    )
+
+
+if __name__ == "__main__":
+    cli()
