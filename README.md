@@ -117,7 +117,7 @@ Messages that start with `/` are handled as gateway commands instead of being fo
 | `/help` | Show the list of available commands |
 | `/stop` | Cancel the currently running Claude response |
 | `/sessions` | List all active Claude Code sessions |
-| `/btw <message>` | Send a quick, context-free reply without session history |
+| `/ask <message>` | Send a quick, context-free reply without session history |
 
 ## Development
 

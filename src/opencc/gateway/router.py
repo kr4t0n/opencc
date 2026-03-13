@@ -26,13 +26,13 @@ class GatewayRouter:
 
         if message.text.startswith("/"):
             cmd = message.text.split()[0].lstrip("/").lower()
-            if cmd == "btw":
+            if cmd == "ask":
                 # Use a throwaway session for a quick, context-free reply.
                 body = message.text[len(message.text.split()[0]) :].strip()
                 if not body:
-                    return "Usage: `/btw <message>` — send a quick message without session context."
-                session_key = f"btw:{uuid.uuid4().hex[:8]}"
-                logger.info("btw: using ephemeral session_key=%s", session_key)
+                    return "Usage: `/ask <message>` — send a quick message without session context."
+                session_key = f"ask:{uuid.uuid4().hex[:8]}"
+                logger.info("ask: using ephemeral session_key=%s", session_key)
                 prompt = _build_prompt(body, message.images)
             else:
                 return self._handle_command(message.text, session_key)
@@ -64,7 +64,7 @@ class GatewayRouter:
             "• `/help` — Show this message\n"
             "• `/stop` — Cancel the currently running Claude response\n"
             "• `/sessions` — List all active Claude Code sessions\n"
-            "• `/btw <message>` — Quick context-free reply (no session history)"
+            "• `/ask <message>` — Quick context-free reply (no session history)"
         )
 
     def _cmd_stop(self, session_key: str) -> str:
