@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 
 from opencc.adapters.base import Message
 from opencc.claude.process import ClaudeProcessManager
@@ -24,9 +25,19 @@ class GatewayRouter:
         )
 
         if message.text.startswith("/"):
-            return self._handle_command(message.text, session_key)
-
-        prompt = _build_prompt(message.text, message.images)
+            cmd = message.text.split()[0].lstrip("/").lower()
+            if cmd == "btw":
+                # Use a throwaway session for a quick, context-free reply.
+                body = message.text[len(message.text.split()[0]):].strip()
+                if not body:
+                    return "Usage: `/btw <message>` — send a quick message without session context."
+                session_key = f"btw:{uuid.uuid4().hex[:8]}"
+                logger.info("btw: using ephemeral session_key=%s", session_key)
+                prompt = _build_prompt(body, message.images)
+            else:
+                return self._handle_command(message.text, session_key)
+        else:
+            prompt = _build_prompt(message.text, message.images)
 
         try:
             response = await self.claude_manager.send(session_key, prompt)
@@ -51,7 +62,8 @@ class GatewayRouter:
         return (
             "*Available commands:*\n"
             "• `/help` — Show this message\n"
-            "• `/stop` — Cancel the currently running Claude response"
+            "• `/stop` — Cancel the currently running Claude response\n"
+            "• `/btw <message>` — Quick context-free reply (no session history)"
         )
 
     def _cmd_stop(self, session_key: str) -> str:
