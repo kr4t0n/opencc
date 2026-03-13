@@ -28,7 +28,7 @@ class GatewayRouter:
             cmd = message.text.split()[0].lstrip("/").lower()
             if cmd == "btw":
                 # Use a throwaway session for a quick, context-free reply.
-                body = message.text[len(message.text.split()[0]):].strip()
+                body = message.text[len(message.text.split()[0]) :].strip()
                 if not body:
                     return "Usage: `/btw <message>` — send a quick message without session context."
                 session_key = f"btw:{uuid.uuid4().hex[:8]}"
@@ -63,6 +63,7 @@ class GatewayRouter:
             "*Available commands:*\n"
             "• `/help` — Show this message\n"
             "• `/stop` — Cancel the currently running Claude response\n"
+            "• `/sessions` — List all active Claude Code sessions\n"
             "• `/btw <message>` — Quick context-free reply (no session history)"
         )
 
@@ -71,9 +72,20 @@ class GatewayRouter:
             return "Cancelled the running Claude process."
         return "No active Claude process to stop."
 
+    def _cmd_sessions(self, session_key: str) -> str:
+        sessions = self.claude_manager.list_sessions()
+        if not sessions:
+            return "No active sessions."
+        lines = ["*Active sessions:*"]
+        for s in sessions:
+            sid = s["session_id"] or "(pending)"
+            lines.append(f"• `{s['session_key']}` — session_id: `{sid}`")
+        return "\n".join(lines)
+
     _commands: dict[str, callable] = {
         "help": _cmd_help,
         "stop": _cmd_stop,
+        "sessions": _cmd_sessions,
     }
 
 
@@ -83,10 +95,7 @@ def _build_prompt(text: str, images: list[str]) -> str:
         return text
 
     parts: list[str] = []
-    parts.append(
-        "The user attached the following image(s). "
-        "Use your Read tool to view each file before responding:\n"
-    )
+    parts.append("The user attached the following image(s). Use your Read tool to view each file before responding:\n")
     for path in images:
         parts.append(f"  - {path}")
     parts.append("")  # blank line separator
