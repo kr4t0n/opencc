@@ -118,6 +118,29 @@ Messages that start with `/` are handled as gateway commands instead of being fo
 | `/stop` | Cancel the currently running Claude response |
 | `/btw <message>` | Send a quick, context-free reply without session history |
 
+## Development
+
+1. **Install dev dependencies**
+
+   ```bash
+   uv sync --group dev
+   ```
+
+2. **Set up pre-commit hooks**
+
+   ```bash
+   uv run pre-commit install
+   ```
+
+   This enables automatic linting (`ruff check --fix`) and formatting (`ruff format`) on every commit.
+
+3. **Run linter manually**
+
+   ```bash
+   uv run ruff check .        # lint
+   uv run ruff format .       # format
+   ```
+
 ## Adding New Adapters
 
 Subclass `IMAdapter` in `src/opencc/adapters/base.py` and implement `start`, `stop`, and `send_message`. Register the adapter in `src/opencc/main.py` alongside the existing `SlackAdapter`.
