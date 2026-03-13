@@ -18,7 +18,7 @@ dependencies = [
 opencc = "opencc.main:cli"
 
 [dependency-groups]
-dev = ["ruff"]
+dev = ["ruff", "pre-commit"]
 
 [tool.ruff]
 target-version = "py310"
