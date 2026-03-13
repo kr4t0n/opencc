@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shlex
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -19,10 +20,22 @@ class ClaudeSession:
     _proc: Optional[asyncio.subprocess.Process] = field(default=None, repr=False)
 
     async def send(
-        self, prompt: str, *, cli_path: str = "claude", work_dir: str = "."
+        self,
+        prompt: str,
+        *,
+        cli_path: str = "claude",
+        work_dir: str = ".",
+        cli_args: list[str] | None = None,
+        extra_args: list[str] | None = None,
     ) -> str:
         async with self._lock:
-            return await self._run(prompt, cli_path=cli_path, work_dir=work_dir)
+            return await self._run(
+                prompt,
+                cli_path=cli_path,
+                work_dir=work_dir,
+                cli_args=cli_args or [],
+                extra_args=extra_args or [],
+            )
 
     def cancel(self) -> bool:
         """Terminate the running Claude process, if any. Returns True if killed."""
@@ -31,8 +44,12 @@ class ClaudeSession:
             return True
         return False
 
-    async def _run(self, prompt: str, *, cli_path: str, work_dir: str) -> str:
-        cmd = [cli_path, "-p", "--output-format", "json", "--dangerously-skip-permissions"]
+    async def _run(
+        self, prompt: str, *, cli_path: str, work_dir: str, cli_args: list[str], extra_args: list[str]
+    ) -> str:
+        cmd = [cli_path, *cli_args]
+        if extra_args:
+            cmd.extend(extra_args)
         if self.session_id is not None:
             cmd.extend(["--resume", self.session_id])
         cmd.append(prompt)
@@ -75,9 +92,17 @@ class ClaudeSession:
 class ClaudeProcessManager:
     """Manages per-key Claude Code sessions."""
 
-    def __init__(self, cli_path: str = "claude", work_dir: str = ".") -> None:
+    def __init__(
+        self,
+        cli_path: str = "claude",
+        work_dir: str = ".",
+        cli_args: str = "-p --output-format json --dangerously-skip-permissions",
+        extra_args: str = "",
+    ) -> None:
         self.cli_path = cli_path
         self.work_dir = work_dir
+        self._cli_args: list[str] = shlex.split(cli_args)
+        self._extra_args: list[str] = shlex.split(extra_args)
         self._sessions: dict[str, ClaudeSession] = {}
 
     async def send(self, session_key: str, prompt: str) -> str:
@@ -86,7 +111,11 @@ class ClaudeProcessManager:
             session = ClaudeSession(session_key=session_key)
             self._sessions[session_key] = session
         return await session.send(
-            prompt, cli_path=self.cli_path, work_dir=self.work_dir
+            prompt,
+            cli_path=self.cli_path,
+            work_dir=self.work_dir,
+            cli_args=self._cli_args,
+            extra_args=self._extra_args,
         )
 
     def cancel(self, session_key: str) -> bool:

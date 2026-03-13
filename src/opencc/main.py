@@ -22,6 +22,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     claude_manager = ClaudeProcessManager(
         cli_path=settings.claude_cli_path,
         work_dir=settings.claude_work_dir,
+        cli_args=settings.claude_cli_args,
+        extra_args=settings.claude_extra_args,
     )
     router = GatewayRouter(claude_manager)
     slack_adapter = SlackAdapter(
