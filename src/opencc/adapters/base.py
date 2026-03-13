@@ -13,6 +13,7 @@ class Message:
     user_id: str
     text: str
     raw: dict = field(default_factory=dict, repr=False)
+    images: list[str] = field(default_factory=list)
 
 
 MessageHandler = Callable[[Message], Awaitable[str]]

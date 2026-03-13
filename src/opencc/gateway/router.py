@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from opencc.adapters.base import Message
 from opencc.claude.process import ClaudeProcessManager
@@ -22,10 +23,43 @@ class GatewayRouter:
             session_key,
         )
 
+        prompt = _build_prompt(message.text, message.images)
+
         try:
-            response = await self.claude_manager.send(session_key, message.text)
+            response = await self.claude_manager.send(session_key, prompt)
         except RuntimeError:
             logger.exception("claude session error for %s", session_key)
             response = "Sorry, something went wrong talking to Claude Code."
+        finally:
+            _cleanup_images(message.images)
 
         return response
+
+
+def _build_prompt(text: str, images: list[str]) -> str:
+    """Prepend image-read instructions to the user's text when images are attached."""
+    if not images:
+        return text
+
+    parts: list[str] = []
+    parts.append(
+        "The user attached the following image(s). "
+        "Use your Read tool to view each file before responding:\n"
+    )
+    for path in images:
+        parts.append(f"  - {path}")
+    parts.append("")  # blank line separator
+
+    if text.strip():
+        parts.append(text)
+
+    return "\n".join(parts)
+
+
+def _cleanup_images(images: list[str]) -> None:
+    """Remove temporary image files."""
+    for path in images:
+        try:
+            os.remove(path)
+        except OSError:
+            logger.debug("Could not remove temp image %s", path)

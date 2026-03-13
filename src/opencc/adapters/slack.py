@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import tempfile
 from typing import Optional
 
+import aiohttp
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 from opencc.adapters.base import IMAdapter, Message, MessageHandler
 
 logger = logging.getLogger(__name__)
+
+_IMAGE_MIMETYPES = frozenset({
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+})
 
 SLACK_MAX_MESSAGE_LENGTH = 3000
 
@@ -21,6 +31,7 @@ class SlackAdapter(IMAdapter):
 
     def __init__(self, bot_token: str, app_token: str) -> None:
         self._app = AsyncApp(token=bot_token)
+        self._bot_token = bot_token
         self._app_token = app_token
         self._handler: Optional[AsyncSocketModeHandler] = None
         self._message_handler: Optional[MessageHandler] = None
@@ -55,7 +66,11 @@ class SlackAdapter(IMAdapter):
             return
 
         text = _strip_mention(event.get("text", ""))
-        if not text.strip():
+
+        # Download any attached images.
+        image_paths = await self._download_images(event.get("files", []))
+
+        if not text.strip() and not image_paths:
             return
 
         thread_ts = event.get("thread_ts") or event.get("ts", "")
@@ -68,10 +83,61 @@ class SlackAdapter(IMAdapter):
             user_id=event.get("user", ""),
             text=text,
             raw=event,
+            images=image_paths,
         )
 
         response = await self._message_handler(msg)
         await self.send_message(channel, thread_ts, response)
+
+    async def _download_images(self, files: list[dict]) -> list[str]:
+        """Download image attachments from Slack and return local file paths."""
+        if not files:
+            return []
+
+        image_files = [
+            f for f in files
+            if f.get("mimetype", "") in _IMAGE_MIMETYPES
+        ]
+        if not image_files:
+            return []
+
+        paths: list[str] = []
+        headers = {"Authorization": f"Bearer {self._bot_token}"}
+
+        async with aiohttp.ClientSession(headers=headers) as session:
+            for file_info in image_files:
+                url = file_info.get("url_private_download") or file_info.get("url_private")
+                if not url:
+                    logger.warning("Slack file missing download URL: %s", file_info.get("id"))
+                    continue
+
+                try:
+                    async with session.get(url) as resp:
+                        if resp.status != 200:
+                            logger.warning(
+                                "Failed to download Slack file %s: HTTP %d",
+                                file_info.get("id"),
+                                resp.status,
+                            )
+                            continue
+                        data = await resp.read()
+                except Exception:
+                    logger.exception("Error downloading Slack file %s", file_info.get("id"))
+                    continue
+
+                # Determine file extension from the original filename.
+                name = file_info.get("name", "image")
+                _, ext = os.path.splitext(name)
+                if not ext:
+                    ext = ".png"
+
+                fd, path = tempfile.mkstemp(suffix=ext, prefix="opencc_img_")
+                os.write(fd, data)
+                os.close(fd)
+                paths.append(path)
+                logger.info("Downloaded Slack image %s → %s", file_info.get("id"), path)
+
+        return paths
 
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
