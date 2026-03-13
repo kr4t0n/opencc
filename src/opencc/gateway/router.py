@@ -27,9 +27,9 @@ class GatewayRouter:
 
         try:
             response = await self.claude_manager.send(session_key, prompt)
-        except RuntimeError:
+        except RuntimeError as exc:
             logger.exception("claude session error for %s", session_key)
-            response = "Sorry, something went wrong talking to Claude Code."
+            response = f"Sorry, something went wrong talking to Claude Code.\n```\n{exc}\n```"
         finally:
             _cleanup_images(message.images)
 
