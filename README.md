@@ -90,7 +90,7 @@ After installing the app to your workspace you will need two tokens:
    | `SLACK_APP_TOKEN` | Yes | Slack app-level token (`xapp-...`) |
    | `CLAUDE_CLI_PATH` | No | Path to the Claude Code CLI binary (default: `claude`) |
    | `CLAUDE_WORK_DIR` | No | Working directory for Claude Code sessions (default: `.`) |
-   | `CLAUDE_CLI_ARGS` | No | Base arguments passed to the Claude Code CLI (default: `-p --output-format json --dangerously-skip-permissions`) |
+   | `CLAUDE_CLI_ARGS` | No | Base arguments passed to the Claude Code CLI (default: `-p --output-format json`) |
    | `CLAUDE_EXTRA_ARGS` | No | Extra arguments appended to the CLI invocation (default: empty). Example: `--model sonnet --verbose` |
 
 3. **Run the gateway**

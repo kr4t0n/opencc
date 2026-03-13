@@ -95,7 +95,7 @@ class ClaudeProcessManager:
         self,
         cli_path: str = "claude",
         work_dir: str = ".",
-        cli_args: str = "-p --output-format json --dangerously-skip-permissions",
+        cli_args: str = "-p --output-format json",
         extra_args: str = "",
     ) -> None:
         self.cli_path = cli_path
