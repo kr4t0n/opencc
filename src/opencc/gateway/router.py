@@ -36,8 +36,22 @@ class GatewayRouter:
         return response
 
 
+def _escape_slash_command(text: str) -> str:
+    """Prevent bare slash-commands from being interpreted as CLI skills.
+
+    Claude Code's ``-p`` mode treats a leading ``/`` as a skill invocation
+    (e.g. ``/help`` → skill "help").  When the text originates from a chat
+    adapter it should always be handled as a plain user message, so we
+    strip the leading ``/``.
+    """
+    if text.startswith("/"):
+        return text.lstrip("/")
+    return text
+
+
 def _build_prompt(text: str, images: list[str]) -> str:
     """Prepend image-read instructions to the user's text when images are attached."""
+    text = _escape_slash_command(text)
     if not images:
         return text
 
