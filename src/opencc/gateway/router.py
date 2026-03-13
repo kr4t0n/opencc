@@ -23,6 +23,9 @@ class GatewayRouter:
             session_key,
         )
 
+        if message.text.startswith("/"):
+            return self._handle_command(message.text, session_key)
+
         prompt = _build_prompt(message.text, message.images)
 
         try:
@@ -35,23 +38,35 @@ class GatewayRouter:
 
         return response
 
+    def _handle_command(self, text: str, session_key: str) -> str:
+        """Dispatch gateway slash commands."""
+        cmd = text.split()[0].lstrip("/").lower()
 
-def _escape_slash_command(text: str) -> str:
-    """Prevent bare slash-commands from being interpreted as CLI skills.
+        handler = self._commands.get(cmd)
+        if handler is None:
+            return f"Unknown command: `/{cmd}`. Type `/help` for available commands."
+        return handler(self, session_key)
 
-    Claude Code's ``-p`` mode treats a leading ``/`` as a skill invocation
-    (e.g. ``/help`` → skill "help").  When the text originates from a chat
-    adapter it should always be handled as a plain user message, so we
-    strip the leading ``/``.
-    """
-    if text.startswith("/"):
-        return text.lstrip("/")
-    return text
+    def _cmd_help(self, session_key: str) -> str:
+        return (
+            "*Available commands:*\n"
+            "• `/help` — Show this message\n"
+            "• `/stop` — Cancel the currently running Claude response"
+        )
+
+    def _cmd_stop(self, session_key: str) -> str:
+        if self.claude_manager.cancel(session_key):
+            return "Cancelled the running Claude process."
+        return "No active Claude process to stop."
+
+    _commands: dict[str, callable] = {
+        "help": _cmd_help,
+        "stop": _cmd_stop,
+    }
 
 
 def _build_prompt(text: str, images: list[str]) -> str:
     """Prepend image-read instructions to the user's text when images are attached."""
-    text = _escape_slash_command(text)
     if not images:
         return text
 

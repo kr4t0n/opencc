@@ -16,12 +16,20 @@ class ClaudeSession:
     session_key: str
     session_id: Optional[str] = None
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    _proc: Optional[asyncio.subprocess.Process] = field(default=None, repr=False)
 
     async def send(
         self, prompt: str, *, cli_path: str = "claude", work_dir: str = "."
     ) -> str:
         async with self._lock:
             return await self._run(prompt, cli_path=cli_path, work_dir=work_dir)
+
+    def cancel(self) -> bool:
+        """Terminate the running Claude process, if any. Returns True if killed."""
+        if self._proc is not None and self._proc.returncode is None:
+            self._proc.terminate()
+            return True
+        return False
 
     async def _run(self, prompt: str, *, cli_path: str, work_dir: str) -> str:
         cmd = [cli_path, "-p", "--output-format", "json", "--dangerously-skip-permissions"]
@@ -37,7 +45,11 @@ class ClaudeSession:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        self._proc = proc
+        try:
+            stdout, stderr = await proc.communicate()
+        finally:
+            self._proc = None
 
         if proc.returncode != 0:
             err = stderr.decode(errors="replace").strip()
@@ -76,6 +88,13 @@ class ClaudeProcessManager:
         return await session.send(
             prompt, cli_path=self.cli_path, work_dir=self.work_dir
         )
+
+    def cancel(self, session_key: str) -> bool:
+        """Cancel the running process for *session_key*. Returns True if killed."""
+        session = self._sessions.get(session_key)
+        if session is None:
+            return False
+        return session.cancel()
 
     def list_sessions(self) -> list[dict]:
         return [
