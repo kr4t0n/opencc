@@ -11,3 +11,9 @@ wheels/
 
 # Environment variables
 .env
+
+# Session store
+*.db
+*.db-shm
+*.db-wal
+*.db-journal

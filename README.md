@@ -21,7 +21,7 @@ Slack ──► SlackAdapter ──► GatewayRouter ──► ClaudeProcessMana
 
 - **Adapters** (`src/opencc/adapters/`) — Platform-specific connectors. The `IMAdapter` base class defines the interface; `SlackAdapter` implements it using Socket Mode (WebSocket, no public URL required).
 - **Gateway Router** (`src/opencc/gateway/`) — Routes incoming messages to the correct Claude Code session based on adapter, channel, and thread.
-- **Claude Process Manager** (`src/opencc/claude/`) — Manages Claude Code CLI subprocesses. Each session key maps to a `ClaudeSession` that tracks the conversation's `session_id` for `--resume` support.
+- **Claude Process Manager** (`src/opencc/claude/`) — Manages Claude Code CLI subprocesses. Each session key maps to a `ClaudeSession` that tracks the conversation's `session_id` for `--resume` support. Session mappings are persisted to a SQLite file so sessions survive restarts.
 
 ## Requirements
 
@@ -96,6 +96,7 @@ After installing the app to your workspace you will need two tokens:
    | `CLAUDE_WORK_DIR` | No | Working directory for Claude Code sessions (default: `.`) |
    | `CLAUDE_CLI_ARGS` | No | Base arguments passed to the Claude Code CLI (default: `-p`). The output format (`stream-json`) is added automatically unless you explicitly set `--output-format json` for batch mode |
    | `CLAUDE_EXTRA_ARGS` | No | Extra arguments appended to the CLI invocation (default: empty). Example: `--model sonnet --verbose` |
+   | `SESSION_STORE_PATH` | No | Path to the SQLite file for persisting session mappings across restarts (default: `sessions.db`) |
 
 3. **Run the gateway**
 

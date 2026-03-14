@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     claude_work_dir: str = "."
     claude_cli_args: str = "-p"
     claude_extra_args: str = ""
+    session_store_path: str = "sessions.db"
 
     host: str = "0.0.0.0"
     port: int = 8000

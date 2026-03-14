@@ -51,7 +51,8 @@ opencc/
     │   ├── base.py            # IMAdapter ABC, Message dataclass, MessageHandler type
     │   └── slack.py           # SlackAdapter — Socket Mode, app_mention listener, image download
     ├── claude/
-    │   └── process.py         # ClaudeSession (per-conversation) and ClaudeProcessManager
+    │   ├── process.py         # ClaudeSession (per-conversation) and ClaudeProcessManager
+    │   └── store.py           # SessionStore ABC and SqliteSessionStore
     └── gateway/
         └── router.py          # GatewayRouter — message routing, slash commands, image handling
 ```
@@ -79,7 +80,8 @@ Responses are streamed using Claude Code's `stream-json` output format. The rout
 | **SlackAdapter** | `adapters/slack.py` | Slack Socket Mode integration — listens for `app_mention` events, downloads image attachments to temp files, splits long responses into 3000-char chunks. Provides `post_message` / `update_message` for live streaming updates |
 | **GatewayRouter** | `gateway/router.py` | Routes messages to per-session Claude processes. Session key: `{adapter_name}:{channel_id}:{thread_id}`. Streams responses via `post_message` / `update_message` on the adapter, showing tool usage in real-time. Handles slash commands and image prompt assembly |
 | **ClaudeSession** | `claude/process.py` | Tracks a single Claude Code conversation. Spawns CLI as async subprocess with `--resume` for persistent context. Supports both batch (`send`) and streaming (`send_streaming`) modes. Locks to one message at a time |
-| **ClaudeProcessManager** | `claude/process.py` | Manages multiple `ClaudeSession` instances keyed by session key. Handles `/stop` and `/sessions` |
+| **ClaudeProcessManager** | `claude/process.py` | Manages multiple `ClaudeSession` instances keyed by session key. Handles `/stop` and `/sessions`. Accepts an optional `SessionStore` for persistence and rehydrates sessions on startup |
+| **SessionStore** | `claude/store.py` | ABC for persisting session_key → session_id mappings. `SqliteSessionStore` is the default implementation |
 | **Settings** | `config.py` | Pydantic `BaseSettings` singleton (via `lru_cache`) loading from `.env` |
 | **main.py** | `main.py` | FastAPI app with lifespan context manager. Initializes adapter, router, and process manager on startup. Exposes `/health` and `/sessions` HTTP endpoints |
 
@@ -102,7 +104,7 @@ New IM platforms can be added by subclassing `IMAdapter` in `adapters/` and regi
 
 ## Data Model
 
-No database. All state is in-memory and transient.
+Session mappings (session_key → session_id) are persisted to a SQLite file via `SessionStore`. All other state (locks, subprocess handles) is in-memory and transient.
 
 ### Message
 
@@ -137,6 +139,7 @@ class Settings(BaseSettings):
     slack_app_token: str       # xapp-...
     claude_cli_path: str       # default: "claude"
     claude_work_dir: str       # default: "."
+    session_store_path: str    # default: "sessions.db"
     host: str                  # default: "0.0.0.0"
     port: int                  # default: 8000
 ```
@@ -169,5 +172,6 @@ All loaded via Pydantic Settings from a `.env` file in the project root.
 | `SLACK_APP_TOKEN` | Yes | — | Slack app-level token (`xapp-...`) for Socket Mode |
 | `CLAUDE_CLI_PATH` | No | `claude` | Absolute path to the Claude Code CLI binary |
 | `CLAUDE_WORK_DIR` | No | `.` | Working directory for Claude Code sessions |
+| `SESSION_STORE_PATH` | No | `sessions.db` | Path to the SQLite file for persisting session mappings |
 | `HOST` | No | `0.0.0.0` | FastAPI server bind address |
 | `PORT` | No | `8000` | FastAPI server listen port |

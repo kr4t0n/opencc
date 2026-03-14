@@ -6,9 +6,11 @@ import logging
 import shlex
 import shutil
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from opencc.claude.store import SessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,7 @@ class ClaudeSession:
 
     session_key: str
     session_id: str | None = None
+    _on_session_id: Callable[[str, str], None] | None = field(default=None, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     _proc: asyncio.subprocess.Process | None = field(default=None, repr=False)
 
@@ -132,6 +135,8 @@ class ClaudeSession:
 
         if sid := payload.get("session_id"):
             self.session_id = sid
+            if self._on_session_id is not None:
+                self._on_session_id(self.session_key, sid)
 
         return payload.get("result", "")
 
@@ -172,6 +177,8 @@ class ClaudeSession:
 
                 if sid := event.get("session_id"):
                     self.session_id = sid
+                    if self._on_session_id is not None:
+                        self._on_session_id(self.session_key, sid)
 
                 yield event
 
@@ -195,11 +202,13 @@ class ClaudeProcessManager:
         work_dir: str = ".",
         cli_args: str = "-p",
         extra_args: str = "",
+        session_store: SessionStore | None = None,
     ) -> None:
         self.cli_path = cli_path
         self.work_dir = work_dir
         self._cli_args: list[str] = shlex.split(cli_args)
         self._extra_args: list[str] = shlex.split(extra_args)
+        self._store = session_store
         self._sessions: dict[str, ClaudeSession] = {}
 
         # Detect output format from CLI args.
@@ -217,11 +226,29 @@ class ClaudeProcessManager:
         if self.streaming and "--verbose" not in self._cli_args and "--verbose" not in self._extra_args:
             self._cli_args.append("--verbose")
 
-    async def send(self, session_key: str, prompt: str) -> str:
+        # Rehydrate sessions from persistent store.
+        if self._store is not None:
+            for key, sid in self._store.all().items():
+                self._sessions[key] = ClaudeSession(
+                    session_key=key,
+                    session_id=sid,
+                    _on_session_id=self._persist,
+                )
+            logger.info("rehydrated %d session(s) from store", len(self._sessions))
+
+    def _persist(self, session_key: str, session_id: str) -> None:
+        if self._store is not None:
+            self._store.put(session_key, session_id)
+
+    def _get_or_create_session(self, session_key: str) -> ClaudeSession:
         session = self._sessions.get(session_key)
         if session is None:
-            session = ClaudeSession(session_key=session_key)
+            session = ClaudeSession(session_key=session_key, _on_session_id=self._persist)
             self._sessions[session_key] = session
+        return session
+
+    async def send(self, session_key: str, prompt: str) -> str:
+        session = self._get_or_create_session(session_key)
         return await session.send(
             prompt,
             cli_path=self.cli_path,
@@ -231,10 +258,7 @@ class ClaudeProcessManager:
         )
 
     async def send_streaming(self, session_key: str, prompt: str) -> AsyncIterator[dict]:
-        session = self._sessions.get(session_key)
-        if session is None:
-            session = ClaudeSession(session_key=session_key)
-            self._sessions[session_key] = session
+        session = self._get_or_create_session(session_key)
         async for event in session.send_streaming(
             prompt,
             cli_path=self.cli_path,
@@ -310,3 +334,5 @@ class ClaudeProcessManager:
 
     async def cleanup(self) -> None:
         self._sessions.clear()
+        if self._store is not None:
+            self._store.close()

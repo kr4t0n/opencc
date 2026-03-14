@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from opencc.adapters.slack import SlackAdapter
 from opencc.claude.process import ClaudeProcessManager
+from opencc.claude.store import SqliteSessionStore
 from opencc.config import get_settings
 from opencc.gateway.router import GatewayRouter
 
@@ -19,11 +20,13 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
+    session_store = SqliteSessionStore(settings.session_store_path)
     claude_manager = ClaudeProcessManager(
         cli_path=settings.claude_cli_path,
         work_dir=settings.claude_work_dir,
         cli_args=settings.claude_cli_args,
         extra_args=settings.claude_extra_args,
+        session_store=session_store,
     )
     slack_adapter = SlackAdapter(
         bot_token=settings.slack_bot_token,
