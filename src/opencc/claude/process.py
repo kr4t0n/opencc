@@ -213,6 +213,10 @@ class ClaudeProcessManager:
         except (ValueError, IndexError):
             self._cli_args.extend(["--output-format", "stream-json"])
 
+        # stream-json requires --verbose; add it if missing.
+        if self.streaming and "--verbose" not in self._cli_args and "--verbose" not in self._extra_args:
+            self._cli_args.append("--verbose")
+
     async def send(self, session_key: str, prompt: str) -> str:
         session = self._sessions.get(session_key)
         if session is None:
