@@ -16,7 +16,7 @@ class Message:
     images: list[str] = field(default_factory=list)
 
 
-MessageHandler = Callable[[Message], Awaitable[str]]
+MessageHandler = Callable[[Message], Awaitable[str | None]]
 
 
 class IMAdapter(ABC):
@@ -38,3 +38,15 @@ class IMAdapter(ABC):
     @abstractmethod
     async def send_message(self, channel_id: str, thread_id: str, text: str) -> None:
         """Send a message back to the IM platform."""
+
+    @abstractmethod
+    async def post_message(self, channel_id: str, thread_id: str, text: str) -> str:
+        """Post a message and return a platform-specific message ID (e.g. Slack ts).
+
+        Unlike ``send_message``, callers can use the returned ID with
+        ``update_message`` to edit the message in-place.
+        """
+
+    @abstractmethod
+    async def update_message(self, channel_id: str, thread_id: str, message_id: str, text: str) -> None:
+        """Edit an existing message identified by *message_id*."""

@@ -25,11 +25,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         cli_args=settings.claude_cli_args,
         extra_args=settings.claude_extra_args,
     )
-    router = GatewayRouter(claude_manager)
     slack_adapter = SlackAdapter(
         bot_token=settings.slack_bot_token,
         app_token=settings.slack_app_token,
     )
+    router = GatewayRouter(claude_manager, adapter=slack_adapter)
 
     app.state.claude_manager = claude_manager
     app.state.router = router

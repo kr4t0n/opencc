@@ -4,15 +4,19 @@ IM-to-Claude Code gateway — bridge Slack (and other IM apps) to Claude Code CL
 
 ## Overview
 
-opencc is a lightweight FastAPI service that connects instant-messaging platforms to [Claude Code](https://docs.anthropic.com/en/docs/claude-code). When someone mentions the bot in Slack, opencc forwards the message to a Claude Code CLI session and posts the response back in the thread. Each channel/thread gets its own persistent session, so conversations maintain context.
+opencc is a lightweight FastAPI service that connects instant-messaging platforms to [Claude Code](https://docs.anthropic.com/en/docs/claude-code). When someone mentions the bot in Slack, opencc forwards the message to a Claude Code CLI session and streams the response back in real-time. Each channel/thread gets its own persistent session, so conversations maintain context.
+
+### Streaming & Tool Visibility
+
+Responses are streamed via Claude Code's `stream-json` output format. While Claude is working, a live-updating status message shows each tool invocation as it happens (e.g. file reads, edits, shell commands). Once complete, the status message is replaced with the tool log followed by the final response.
 
 ## Architecture
 
 ```
 Slack ──► SlackAdapter ──► GatewayRouter ──► ClaudeProcessManager ──► Claude Code CLI
-                                                   │
-                                              ClaudeSession
-                                           (per channel/thread)
+               ▲                │                    │                  (stream-json)
+               │           (post/update)        ClaudeSession
+               └────────── live updates ◄──── (per channel/thread)
 ```
 
 - **Adapters** (`src/opencc/adapters/`) — Platform-specific connectors. The `IMAdapter` base class defines the interface; `SlackAdapter` implements it using Socket Mode (WebSocket, no public URL required).

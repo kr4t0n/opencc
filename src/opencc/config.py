@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     slack_app_token: str
     claude_cli_path: str = "claude"
     claude_work_dir: str = "."
-    claude_cli_args: str = "-p --output-format json"
+    claude_cli_args: str = "-p"
     claude_extra_args: str = ""
 
     host: str = "0.0.0.0"

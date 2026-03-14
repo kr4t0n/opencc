@@ -64,20 +64,21 @@ opencc/
 
 ```
 Slack ──► SlackAdapter ──► GatewayRouter ──► ClaudeProcessManager ──► Claude Code CLI
-                                │
-                         (Session Context)
-                          ClaudeSession
-                       (per channel/thread)
+               ▲                │                    │                  (stream-json)
+               │           (post/update)        ClaudeSession
+               └────────── live updates ◄──── (per channel/thread)
 ```
+
+Responses are streamed using Claude Code's `stream-json` output format. The router posts an initial status message to Slack, then updates it in real-time as tool-use events arrive. Once the CLI finishes, the message is updated with the tool log and final result.
 
 ### Components
 
 | Component | Location | Responsibility |
 |---|---|---|
 | **IMAdapter** | `adapters/base.py` | Abstract base class for IM platform connectors |
-| **SlackAdapter** | `adapters/slack.py` | Slack Socket Mode integration — listens for `app_mention` events, downloads image attachments to temp files, splits long responses into 3000-char chunks |
-| **GatewayRouter** | `gateway/router.py` | Routes messages to per-session Claude processes. Session key: `{adapter_name}:{channel_id}:{thread_id}`. Handles slash commands and image prompt assembly |
-| **ClaudeSession** | `claude/process.py` | Tracks a single Claude Code conversation. Spawns CLI as async subprocess with `--resume` for persistent context. Locks to one message at a time |
+| **SlackAdapter** | `adapters/slack.py` | Slack Socket Mode integration — listens for `app_mention` events, downloads image attachments to temp files, splits long responses into 3000-char chunks. Provides `post_message` / `update_message` for live streaming updates |
+| **GatewayRouter** | `gateway/router.py` | Routes messages to per-session Claude processes. Session key: `{adapter_name}:{channel_id}:{thread_id}`. Streams responses via `post_message` / `update_message` on the adapter, showing tool usage in real-time. Handles slash commands and image prompt assembly |
+| **ClaudeSession** | `claude/process.py` | Tracks a single Claude Code conversation. Spawns CLI as async subprocess with `--resume` for persistent context. Supports both batch (`send`) and streaming (`send_streaming`) modes. Locks to one message at a time |
 | **ClaudeProcessManager** | `claude/process.py` | Manages multiple `ClaudeSession` instances keyed by session key. Handles `/stop` and `/sessions` |
 | **Settings** | `config.py` | Pydantic `BaseSettings` singleton (via `lru_cache`) loading from `.env` |
 | **main.py** | `main.py` | FastAPI app with lifespan context manager. Initializes adapter, router, and process manager on startup. Exposes `/health` and `/sessions` HTTP endpoints |
@@ -87,9 +88,11 @@ Slack ──► SlackAdapter ──► GatewayRouter ──► ClaudeProcessMana
 Each `ClaudeSession` spawns Claude Code CLI with these flags:
 
 - `-p` — prose mode
-- `--output-format json` — structured output
+- `--output-format json` — structured output (batch mode) or `--output-format stream-json` (streaming mode, overridden automatically by `send_streaming`)
 - `--dangerously-skip-permissions` — non-interactive execution
 - `--resume <session_id>` — persistent conversation context (after first message)
+
+In streaming mode, the output format is automatically overridden to `stream-json` regardless of the configured `CLAUDE_CLI_ARGS`.
 
 ### Extensibility
 

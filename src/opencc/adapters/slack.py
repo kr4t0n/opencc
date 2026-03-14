@@ -13,12 +13,14 @@ from opencc.adapters.base import IMAdapter, Message, MessageHandler
 
 logger = logging.getLogger(__name__)
 
-_IMAGE_MIMETYPES = frozenset({
-    "image/png",
-    "image/jpeg",
-    "image/gif",
-    "image/webp",
-})
+_IMAGE_MIMETYPES = frozenset(
+    {
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+    }
+)
 
 SLACK_MAX_MESSAGE_LENGTH = 3000
 
@@ -55,6 +57,21 @@ class SlackAdapter(IMAdapter):
                 text=chunk,
             )
 
+    async def post_message(self, channel_id: str, thread_id: str, text: str) -> str:
+        resp = await self._app.client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_id,
+            text=text,
+        )
+        return resp["ts"]
+
+    async def update_message(self, channel_id: str, thread_id: str, message_id: str, text: str) -> None:
+        await self._app.client.chat_update(
+            channel=channel_id,
+            ts=message_id,
+            text=text,
+        )
+
     def _register_listeners(self) -> None:
         @self._app.event("app_mention")
         async def on_mention(event: dict, say) -> None:  # noqa: ANN001
@@ -86,17 +103,15 @@ class SlackAdapter(IMAdapter):
         )
 
         response = await self._message_handler(msg)
-        await self.send_message(channel, thread_ts, response)
+        if response is not None:
+            await self.send_message(channel, thread_ts, response)
 
     async def _download_images(self, files: list[dict]) -> list[str]:
         """Download image attachments from Slack and return local file paths."""
         if not files:
             return []
 
-        image_files = [
-            f for f in files
-            if f.get("mimetype", "") in _IMAGE_MIMETYPES
-        ]
+        image_files = [f for f in files if f.get("mimetype", "") in _IMAGE_MIMETYPES]
         if not image_files:
             return []
 
