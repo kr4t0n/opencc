@@ -161,19 +161,19 @@ def _strip_mention(text: str) -> str:
     return _MENTION_RE.sub("", text).strip()
 
 
-_TRUNCATION_SUFFIX = "\n…_(truncated)_"
+_TRUNCATION_PREFIX = "_(earlier messages truncated)_\n…\n"
 
 
 def _truncate(text: str, limit: int = SLACK_MAX_MESSAGE_LENGTH) -> str:
-    """Truncate text to fit within the Slack message length limit."""
+    """Truncate text from the beginning so the most recent content stays visible."""
     if len(text) <= limit:
         return text
-    cut = limit - len(_TRUNCATION_SUFFIX)
-    # Try to cut at the last newline before the limit.
-    split_at = text.rfind("\n", 0, cut)
+    cut = len(text) - (limit - len(_TRUNCATION_PREFIX))
+    # Try to cut at the first newline after the cut point for a clean break.
+    split_at = text.find("\n", cut)
     if split_at == -1:
         split_at = cut
-    return text[:split_at] + _TRUNCATION_SUFFIX
+    return _TRUNCATION_PREFIX + text[split_at:].lstrip("\n")
 
 
 def _split_message(text: str, limit: int = SLACK_MAX_MESSAGE_LENGTH) -> list[str]:
