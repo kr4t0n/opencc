@@ -288,8 +288,11 @@ def _summarize_tool(name: str, tool_input: dict) -> str:
         detail = tool_input.get("description", "") or tool_input.get("prompt", "")[:60]
     elif name in ("WebFetch", "web_fetch"):
         detail = tool_input.get("url", "")
-    elif name in ("WebSearch", "web_search"):
+    elif name in ("WebSearch", "web_search", "ToolSearch", "tool_search"):
         detail = tool_input.get("query", "")
+    elif name in ("TodoWrite", "todo_write"):
+        todos = tool_input.get("todos", [])
+        detail = f"{len(todos)} item{'s' if len(todos) != 1 else ''}"
 
     if detail:
         return f"🔧 `{name}` — {detail}"
