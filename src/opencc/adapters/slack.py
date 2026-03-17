@@ -29,6 +29,7 @@ class SlackAdapter(IMAdapter):
     """Slack adapter using Socket Mode (WebSocket, no public URL needed)."""
 
     name = "slack"
+    max_message_length = SLACK_MAX_MESSAGE_LENGTH
 
     def __init__(self, bot_token: str, app_token: str) -> None:
         self._app = AsyncApp(token=bot_token)
@@ -61,7 +62,7 @@ class SlackAdapter(IMAdapter):
         resp = await self._app.client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_id,
-            text=_truncate(text),
+            text=self.truncate(text),
         )
         return resp["ts"]
 
@@ -69,7 +70,7 @@ class SlackAdapter(IMAdapter):
         await self._app.client.chat_update(
             channel=channel_id,
             ts=message_id,
-            text=_truncate(text),
+            text=self.truncate(text),
         )
 
     def _register_listeners(self) -> None:
@@ -159,21 +160,6 @@ _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
 
 def _strip_mention(text: str) -> str:
     return _MENTION_RE.sub("", text).strip()
-
-
-_TRUNCATION_PREFIX = "_(earlier messages truncated)_\n…\n"
-
-
-def _truncate(text: str, limit: int = SLACK_MAX_MESSAGE_LENGTH) -> str:
-    """Truncate text from the beginning so the most recent content stays visible."""
-    if len(text) <= limit:
-        return text
-    cut = len(text) - (limit - len(_TRUNCATION_PREFIX))
-    # Try to cut at the first newline after the cut point for a clean break.
-    split_at = text.find("\n", cut)
-    if split_at == -1:
-        split_at = cut
-    return _TRUNCATION_PREFIX + text[split_at:].lstrip("\n")
 
 
 def _split_message(text: str, limit: int = SLACK_MAX_MESSAGE_LENGTH) -> list[str]:

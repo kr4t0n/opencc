@@ -76,7 +76,7 @@ Responses are streamed using Claude Code's `stream-json` output format. The rout
 
 | Component | Location | Responsibility |
 |---|---|---|
-| **IMAdapter** | `adapters/base.py` | Abstract base class for IM platform connectors |
+| **IMAdapter** | `adapters/base.py` | Abstract base class for IM platform connectors. Provides `truncate()` helper that trims oversized text from the beginning (keeping recent content visible), controlled by `max_message_length` |
 | **SlackAdapter** | `adapters/slack.py` | Slack Socket Mode integration — listens for `app_mention` events, downloads image attachments to temp files, splits long responses into 3000-char chunks. Provides `post_message` / `update_message` for live streaming updates |
 | **GatewayRouter** | `gateway/router.py` | Routes messages to per-session Claude processes. Session key: `{adapter_name}:{channel_id}:{thread_id}`. Streams responses via `post_message` / `update_message` on the adapter, showing tool usage in real-time. Handles slash commands and image prompt assembly |
 | **ClaudeSession** | `claude/process.py` | Tracks a single Claude Code conversation. Spawns CLI as async subprocess with `--resume` for persistent context. Supports both batch (`send`) and streaming (`send_streaming`) modes. Locks to one message at a time |

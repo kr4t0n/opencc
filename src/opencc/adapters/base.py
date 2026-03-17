@@ -18,11 +18,36 @@ class Message:
 
 MessageHandler = Callable[[Message], Awaitable[str | None]]
 
+_TRUNCATION_PREFIX = "_(earlier messages truncated)_\n…\n"
+
+
+def truncate_message(text: str, limit: int) -> str:
+    """Truncate text from the beginning so the most recent content stays visible."""
+    if len(text) <= limit:
+        return text
+    cut = len(text) - (limit - len(_TRUNCATION_PREFIX))
+    # Try to cut at the first newline after the cut point for a clean break.
+    split_at = text.find("\n", cut)
+    if split_at == -1:
+        split_at = cut
+    return _TRUNCATION_PREFIX + text[split_at:].lstrip("\n")
+
 
 class IMAdapter(ABC):
-    """Base class for IM platform adapters."""
+    """Base class for IM platform adapters.
+
+    Subclasses should set ``max_message_length`` to the platform's
+    character limit.  The ``truncate`` helper uses this value to trim
+    oversized text from the beginning, keeping the most recent content
+    visible.
+    """
 
     name: str
+    max_message_length: int = 4000
+
+    def truncate(self, text: str) -> str:
+        """Truncate *text* to ``max_message_length``, cutting from the beginning."""
+        return truncate_message(text, self.max_message_length)
 
     @abstractmethod
     async def start(self, handler: MessageHandler) -> None:
