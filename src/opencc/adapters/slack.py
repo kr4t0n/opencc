@@ -61,7 +61,7 @@ class SlackAdapter(IMAdapter):
         resp = await self._app.client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_id,
-            text=text,
+            text=_truncate(text),
         )
         return resp["ts"]
 
@@ -69,7 +69,7 @@ class SlackAdapter(IMAdapter):
         await self._app.client.chat_update(
             channel=channel_id,
             ts=message_id,
-            text=text,
+            text=_truncate(text),
         )
 
     def _register_listeners(self) -> None:
@@ -159,6 +159,21 @@ _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
 
 def _strip_mention(text: str) -> str:
     return _MENTION_RE.sub("", text).strip()
+
+
+_TRUNCATION_SUFFIX = "\n…_(truncated)_"
+
+
+def _truncate(text: str, limit: int = SLACK_MAX_MESSAGE_LENGTH) -> str:
+    """Truncate text to fit within the Slack message length limit."""
+    if len(text) <= limit:
+        return text
+    cut = limit - len(_TRUNCATION_SUFFIX)
+    # Try to cut at the last newline before the limit.
+    split_at = text.rfind("\n", 0, cut)
+    if split_at == -1:
+        split_at = cut
+    return text[:split_at] + _TRUNCATION_SUFFIX
 
 
 def _split_message(text: str, limit: int = SLACK_MAX_MESSAGE_LENGTH) -> list[str]:
