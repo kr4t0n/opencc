@@ -23,6 +23,7 @@ class ProgressTask:
     task_id: str
     title: str
     status: str  # "pending", "in_progress", "complete"
+    details: str = ""
     output: str = ""
 
 

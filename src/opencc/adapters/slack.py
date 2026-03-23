@@ -244,6 +244,8 @@ def _build_plan_block(title: str, tasks: list[ProgressTask]) -> dict:
             "title": task.title,
             "status": task.status,
         }
+        if task.details:
+            pt["details"] = _rich_text_block(task.details)
         if task.output:
             pt["output"] = _rich_text_block(task.output)
         plan_tasks.append(pt)

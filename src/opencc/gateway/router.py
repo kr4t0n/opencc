@@ -118,12 +118,13 @@ class GatewayRouter:
                                 if t.status == "in_progress":
                                     t.status = "complete"
 
-                            summary = _summarize_tool(block.get("name", "unknown"), block.get("input", {}))
+                            title, detail = _summarize_tool(block.get("name", "unknown"), block.get("input", {}))
                             tasks.append(
                                 ProgressTask(
                                     task_id=f"tool_{len(tasks)}",
-                                    title=summary,
+                                    title=title,
                                     status="in_progress",
+                                    details=detail,
                                 )
                             )
 
@@ -264,8 +265,12 @@ _STATUS_WORKING = "⏳ _Working..._"
 _TITLE_WORKING = "Working…"
 
 
-def _summarize_tool(name: str, tool_input: dict) -> str:
-    """Produce a one-line summary for a tool_use event (used as plan task title)."""
+def _summarize_tool(name: str, tool_input: dict) -> tuple[str, str]:
+    """Return (title, detail) for a tool_use event.
+
+    *title* is the tool name; *detail* holds the key parameter(s) and is
+    rendered inside the plan task's ``details`` rich-text field.
+    """
     detail = ""
     if name in ("Read", "read", "Edit", "edit", "Write", "write"):
         detail = tool_input.get("file_path", "")
@@ -284,9 +289,7 @@ def _summarize_tool(name: str, tool_input: dict) -> str:
         todos = tool_input.get("todos", [])
         detail = f"{len(todos)} item{'s' if len(todos) != 1 else ''}"
 
-    if detail:
-        return f"{name}: {detail}"
-    return name
+    return name, detail
 
 
 def _build_prompt(text: str, images: list[str]) -> str:
