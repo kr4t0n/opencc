@@ -16,6 +16,16 @@ class Message:
     images: list[str] = field(default_factory=list)
 
 
+@dataclass
+class ProgressTask:
+    """A single task within a progress indicator (e.g. a tool invocation)."""
+
+    task_id: str
+    title: str
+    status: str  # "pending", "in_progress", "complete"
+    output: str = ""
+
+
 MessageHandler = Callable[[Message], Awaitable[str | None]]
 
 _TRUNCATION_PREFIX = "_(earlier messages truncated)_\n…\n"
@@ -84,3 +94,19 @@ class IMAdapter(ABC):
     @abstractmethod
     async def update_message(self, channel_id: str, thread_id: str, message_id: str, text: str) -> None:
         """Edit an existing message identified by *message_id*."""
+
+    @abstractmethod
+    async def post_progress(self, channel_id: str, thread_id: str, title: str, tasks: list[ProgressTask]) -> str:
+        """Post a progress indicator and return a platform-specific message ID."""
+
+    @abstractmethod
+    async def update_progress(
+        self,
+        channel_id: str,
+        thread_id: str,
+        message_id: str,
+        title: str,
+        tasks: list[ProgressTask],
+        result_text: str | None = None,
+    ) -> None:
+        """Update a progress indicator, optionally appending a final result."""
