@@ -6,6 +6,8 @@ This document is the canonical reference for AI agents working on this codebase.
 
 ## Rules
 
+Before starting any new feature or bug fix, create a git worktree from the default branch (e.g. `git worktree add ../opencc-<branch-name> -b <branch-name> main`). This ensures parallel code changes are properly isolated and do not interfere with each other. When the work is complete and merged, clean up the worktree with `git worktree remove`.
+
 After making any code changes, always read `README.md` and check whether the change affects documented behavior (e.g. new/changed environment variables, commands, endpoints, architecture, setup steps). If it does, update the README accordingly in the same changeset.
 
 ---
