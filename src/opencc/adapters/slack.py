@@ -50,50 +50,56 @@ class SlackAdapter(IMAdapter):
             await self._handler.close_async()
             logger.info("Slack adapter stopped")
 
-    def format_message(self, text: str) -> str:
-        return _markdown_to_mrkdwn(text)
+    def _prepare_message(self, text: str) -> tuple[str, dict | None]:
+        """Extract the first markdown table as a Slack table block.
 
-    def _prepare_message(self, text: str) -> tuple[str, list[dict] | None]:
-        """Extract the first markdown table as a Slack table block, then format the rest."""
+        Returns (remaining_text, table_block_or_None).
+        """
         table_match = re.search(r"(?:^\|.+\|$\n?){2,}", text, flags=re.MULTILINE)
-        blocks = None
 
         if table_match:
             table_block = _markdown_table_to_slack_block(table_match.group(0))
             if table_block:
-                # Remove the first table from the text body.
                 before = text[: table_match.start()].rstrip("\n")
                 after = text[table_match.end() :].lstrip("\n")
                 text = before + ("\n\n" if before and after else "") + after
-                blocks = [table_block]
+                return text, table_block
 
-        text = self.format_message(text)
-        return text, blocks
+        return text, None
 
     async def send_message(self, channel_id: str, thread_id: str, text: str) -> None:
-        text, blocks = self._prepare_message(text)
+        text, table_block = self._prepare_message(text)
         chunks = _split_message(text)
         for i, chunk in enumerate(chunks):
-            kwargs: dict = {"channel": channel_id, "thread_ts": thread_id, "text": chunk}
             # Attach the table block to the last chunk.
-            if blocks and i == len(chunks) - 1:
-                kwargs["blocks"] = blocks
-            await self._app.client.chat_postMessage(**kwargs)
+            tb = table_block if i == len(chunks) - 1 else None
+            await self._app.client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_id,
+                text=chunk,
+                blocks=_build_blocks(chunk, tb),
+            )
 
     async def post_message(self, channel_id: str, thread_id: str, text: str) -> str:
-        text, blocks = self._prepare_message(text)
-        kwargs: dict = {"channel": channel_id, "thread_ts": thread_id, "text": self.truncate(text)}
-        if blocks:
-            kwargs["blocks"] = blocks
-        resp = await self._app.client.chat_postMessage(**kwargs)
+        text, table_block = self._prepare_message(text)
+        truncated = self.truncate(text)
+        resp = await self._app.client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_id,
+            text=truncated,
+            blocks=_build_blocks(truncated, table_block),
+        )
         return resp["ts"]
 
     async def update_message(self, channel_id: str, thread_id: str, message_id: str, text: str) -> None:
-        text, blocks = self._prepare_message(text)
-        kwargs: dict = {"channel": channel_id, "ts": message_id, "text": self.truncate(text)}
-        if blocks:
-            kwargs["blocks"] = blocks
-        await self._app.client.chat_update(**kwargs)
+        text, table_block = self._prepare_message(text)
+        truncated = self.truncate(text)
+        await self._app.client.chat_update(
+            channel=channel_id,
+            ts=message_id,
+            text=truncated,
+            blocks=_build_blocks(truncated, table_block),
+        )
 
     def _register_listeners(self) -> None:
         @self._app.event("app_mention")
@@ -177,58 +183,12 @@ class SlackAdapter(IMAdapter):
         return paths
 
 
-def _markdown_to_mrkdwn(text: str) -> str:
-    """Convert standard Markdown to Slack mrkdwn format.
-
-    Protects code blocks and inline code from conversion, then translates
-    the most common Markdown constructs into their Slack equivalents.
-    """
-    # -- protect code so regex replacements don't touch it -----------------
-    code_blocks: list[str] = []
-    inline_codes: list[str] = []
-
-    def _save_block(m: re.Match) -> str:
-        idx = len(code_blocks)
-        # Strip language hint, keep only the code content.
-        code_blocks.append(f"```\n{m.group(1)}```")
-        return f"\x00CB{idx}\x00"
-
-    def _save_inline(m: re.Match) -> str:
-        idx = len(inline_codes)
-        inline_codes.append(m.group(0))
-        return f"\x00IC{idx}\x00"
-
-    text = re.sub(r"```[^\n]*\n(.*?)```", _save_block, text, flags=re.DOTALL)
-    text = re.sub(r"`[^`\n]+`", _save_inline, text)
-
-    # Tables: Slack has no table syntax — convert to readable key-value rows.
-    text = re.sub(r"(?:^\|.+\|$\n?){2,}", lambda m: _table_to_mrkdwn(m.group(0)), text, flags=re.MULTILINE)
-
-    # -- convert Markdown → mrkdwn ----------------------------------------
-
-    # Images (before links, since image syntax is a superset).
-    text = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", r"<\2|\1>", text)
-    # Links: [text](url) → <url|text>
-    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"<\2|\1>", text)
-    # Headers: # … → bold
-    text = re.sub(r"^#{1,6}\s+(.+)$", r"*\1*", text, flags=re.MULTILINE)
-    # Bold+italic: ***text*** → *_text_*
-    text = re.sub(r"\*{3}(.+?)\*{3}", r"*_\1_*", text)
-    # Bold: **text** or __text__ → *text*
-    text = re.sub(r"\*{2}(.+?)\*{2}", r"*\1*", text)
-    text = re.sub(r"__(.+?)__", r"*\1*", text)
-    # Strikethrough: ~~text~~ → ~text~
-    text = re.sub(r"~~(.+?)~~", r"~\1~", text)
-    # Horizontal rules
-    text = re.sub(r"^(-{3,}|\*{3,}|_{3,})$", "———", text, flags=re.MULTILINE)
-
-    # -- restore protected code --------------------------------------------
-    for idx, code in enumerate(code_blocks):
-        text = text.replace(f"\x00CB{idx}\x00", code)
-    for idx, code in enumerate(inline_codes):
-        text = text.replace(f"\x00IC{idx}\x00", code)
-
-    return text
+def _build_blocks(text: str, table_block: dict | None = None) -> list[dict]:
+    """Wrap text in a Slack markdown block, optionally appending a table block."""
+    blocks: list[dict] = [{"type": "markdown", "text": text}]
+    if table_block is not None:
+        blocks.append(table_block)
+    return blocks
 
 
 def _parse_table_rows(table_text: str) -> tuple[list[str], list[list[str]]] | None:
@@ -287,26 +247,6 @@ def _markdown_table_to_slack_block(table_text: str) -> dict | None:
         "column_settings": [{"is_wrapped": True} for _ in range(num_cols)],
         "rows": rows,
     }
-
-
-def _table_to_mrkdwn(table_text: str) -> str:
-    """Fallback: convert a Markdown table into key-value rows for extra tables
-    beyond the one native table block Slack allows per message.
-    """
-    parsed = _parse_table_rows(table_text)
-    if parsed is None:
-        return table_text
-
-    headers, data_rows = parsed
-    result: list[str] = []
-    for row in data_rows:
-        pairs: list[str] = []
-        for i, cell in enumerate(row):
-            header = headers[i] if i < len(headers) else f"Col{i + 1}"
-            pairs.append(f"*{header}:* {cell}")
-        result.append("• " + "  ·  ".join(pairs))
-
-    return "\n".join(result) + "\n"
 
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
