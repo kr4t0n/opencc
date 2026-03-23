@@ -113,20 +113,29 @@ class GatewayRouter:
                 if etype == "assistant":
                     for block in event.get("message", {}).get("content", []):
                         if block.get("type") == "tool_use":
-                            # Mark the previous in-progress task as complete.
-                            for t in tasks:
-                                if t.status == "in_progress":
-                                    t.status = "complete"
-
                             title, detail = _summarize_tool(block.get("name", "unknown"), block.get("input", {}))
-                            tasks.append(
-                                ProgressTask(
-                                    task_id=f"tool_{len(tasks)}",
-                                    title=title,
-                                    status="in_progress",
-                                    details=detail,
+
+                            # Merge consecutive calls to the same tool.
+                            last = tasks[-1] if tasks else None
+                            if last and last.title.split(" (")[0] == title:
+                                if detail:
+                                    last.details = f"{last.details}\n{detail}" if last.details else detail
+                                count = last.details.count("\n") + 1 if last.details else 1
+                                last.title = f"{title} ({count})"
+                                last.status = "in_progress"
+                            else:
+                                # Different tool — mark previous as complete.
+                                for t in tasks:
+                                    if t.status == "in_progress":
+                                        t.status = "complete"
+                                tasks.append(
+                                    ProgressTask(
+                                        task_id=f"tool_{len(tasks)}",
+                                        title=title,
+                                        status="in_progress",
+                                        details=detail,
+                                    )
                                 )
-                            )
 
                             if now - last_update >= _UPDATE_INTERVAL:
                                 await self.adapter.update_progress(channel, thread, msg_ts, _TITLE_WORKING, tasks)

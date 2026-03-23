@@ -223,14 +223,20 @@ def _build_blocks(text: str, table_block: dict | None = None) -> list[dict]:
 
 
 def _rich_text_block(text: str) -> dict:
-    """Build a minimal rich_text block for use inside plan task fields."""
+    """Build a rich_text block for use inside plan task fields.
+
+    Multi-line text is split into one ``rich_text_section`` per line to
+    avoid exceeding Slack's per-element size limit.
+    """
+    lines = [line for line in text.split("\n") if line]
     return {
         "type": "rich_text",
         "elements": [
             {
                 "type": "rich_text_section",
-                "elements": [{"type": "text", "text": text}],
+                "elements": [{"type": "text", "text": line}],
             }
+            for line in lines
         ],
     }
 
