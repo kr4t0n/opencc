@@ -5,7 +5,7 @@ import logging
 import os
 import uuid
 
-from opencc.adapters.base import IMAdapter, Message
+from opencc.adapters.base import IMAdapter, Message, ProgressTask
 from opencc.claude.process import ClaudeProcessManager
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ class GatewayRouter:
         prompt: str,
         stream_fn: ...,
     ) -> None:
-        """Post a status message, stream events, and update it in real-time.
+        """Post a plan block, stream events, and update tasks in real-time.
 
         Returns ``None`` to signal the caller that the response was already
         sent directly to the adapter (no additional ``send_message`` needed).
@@ -99,9 +99,9 @@ class GatewayRouter:
         channel = message.channel_id
         thread = message.thread_id
 
-        msg_ts = await self.adapter.post_message(channel, thread, _STATUS_WORKING)
+        msg_ts = await self.adapter.post_progress(channel, thread, _TITLE_WORKING, [])
 
-        tools: list[str] = []
+        tasks: list[ProgressTask] = []
         result_text = ""
         last_update = 0.0
 
@@ -113,12 +113,32 @@ class GatewayRouter:
                 if etype == "assistant":
                     for block in event.get("message", {}).get("content", []):
                         if block.get("type") == "tool_use":
-                            summary = _summarize_tool(block.get("name", "unknown"), block.get("input", {}))
-                            tools.append(summary)
+                            title, detail = _summarize_tool(block.get("name", "unknown"), block.get("input", {}))
+
+                            # Merge consecutive calls to the same tool.
+                            last = tasks[-1] if tasks else None
+                            if last and last.title.split(" (")[0] == title:
+                                if detail:
+                                    last.details = f"{last.details}\n{detail}" if last.details else detail
+                                count = last.details.count("\n") + 1 if last.details else 1
+                                last.title = f"{title} ({count})"
+                                last.status = "in_progress"
+                            else:
+                                # Different tool — mark previous as complete.
+                                for t in tasks:
+                                    if t.status == "in_progress":
+                                        t.status = "complete"
+                                tasks.append(
+                                    ProgressTask(
+                                        task_id=f"tool_{len(tasks)}",
+                                        title=title,
+                                        status="in_progress",
+                                        details=detail,
+                                    )
+                                )
 
                             if now - last_update >= _UPDATE_INTERVAL:
-                                text = _format_streaming(tools, in_progress=True)
-                                await self.adapter.update_message(channel, thread, msg_ts, text)
+                                await self.adapter.update_progress(channel, thread, msg_ts, _TITLE_WORKING, tasks)
                                 last_update = now
 
                 elif etype == "result":
@@ -127,13 +147,20 @@ class GatewayRouter:
                     else:
                         result_text = event.get("result", "")
 
-            # Final update — assemble tool log + result.
-            await self._send_final(channel, thread, msg_ts, tools, result_text)
+            # Mark all remaining tasks as complete.
+            for t in tasks:
+                if t.status != "complete":
+                    t.status = "complete"
+
+            await self._send_final(channel, thread, msg_ts, tasks, result_text)
 
         except Exception as exc:
             logger.exception("streaming error for %s", session_key)
+            for t in tasks:
+                if t.status != "complete":
+                    t.status = "complete"
             error_text = f"Sorry, something went wrong.\n```\n{exc}\n```"
-            await self.adapter.update_message(channel, thread, msg_ts, error_text)
+            await self.adapter.update_progress(channel, thread, msg_ts, "Error", tasks, error_text)
 
         finally:
             _cleanup_images(message.images)
@@ -145,26 +172,22 @@ class GatewayRouter:
         channel: str,
         thread: str,
         msg_ts: str,
-        tools: list[str],
+        tasks: list[ProgressTask],
         result_text: str,
     ) -> None:
-        """Update the streaming message with the final result.
+        """Update the plan block with completed tasks and the final result.
 
-        If the combined tool log + result fits in one message, update in-place.
-        Otherwise, update with just the tool summary and post the result as a
-        follow-up message.
+        If the result fits alongside the plan block, include it in the same
+        message.  Otherwise post the result as a follow-up.
         """
-        final = _format_final(tools, result_text)
-        if len(final) <= _MAX_MESSAGE_LEN:
-            await self.adapter.update_message(channel, thread, msg_ts, final)
-        else:
-            # Tool summary in the status message, result as a new message.
-            if tools:
-                summary = _format_streaming(tools, in_progress=False)
-                await self.adapter.update_message(channel, thread, msg_ts, summary)
-            else:
-                await self.adapter.update_message(channel, thread, msg_ts, "✅ _Done_")
+        n = len(tasks)
+        title = f"Done ({n} tool{'s' if n != 1 else ''} used)" if tasks else "Done"
+
+        if result_text and len(result_text) > _MAX_MESSAGE_LEN:
+            await self.adapter.update_progress(channel, thread, msg_ts, title, tasks)
             await self.adapter.send_message(channel, thread, result_text)
+        else:
+            await self.adapter.update_progress(channel, thread, msg_ts, title, tasks, result_text or None)
 
     # -- batch response -------------------------------------------------------
 
@@ -248,40 +271,21 @@ class GatewayRouter:
 # -- helpers ------------------------------------------------------------------
 
 _STATUS_WORKING = "⏳ _Working..._"
+_TITLE_WORKING = "Working…"
 
 
-def _format_streaming(tools: list[str], *, in_progress: bool) -> str:
-    """Format the streaming status message shown while Claude is working."""
-    lines: list[str] = []
-    if in_progress:
-        lines.append(_STATUS_WORKING)
-    else:
-        lines.append(f"✅ _Done_ ({len(tools)} tool{'s' if len(tools) != 1 else ''} used)")
-    for t in tools:
-        lines.append(t)
-    return "\n".join(lines)
+def _summarize_tool(name: str, tool_input: dict) -> tuple[str, str]:
+    """Return (title, detail) for a tool_use event.
 
-
-def _format_final(tools: list[str], result_text: str) -> str:
-    """Build the final message combining the tool log and result text."""
-    parts: list[str] = []
-    if tools:
-        for t in tools:
-            parts.append(t)
-        parts.append("")  # blank separator
-    if result_text:
-        parts.append(result_text)
-    return "\n".join(parts) if parts else "_(no response)_"
-
-
-def _summarize_tool(name: str, tool_input: dict) -> str:
-    """Produce a one-line summary for a tool_use event."""
+    *title* is the tool name; *detail* holds the key parameter(s) and is
+    rendered inside the plan task's ``details`` rich-text field.
+    """
     detail = ""
     if name in ("Read", "read", "Edit", "edit", "Write", "write"):
         detail = tool_input.get("file_path", "")
     elif name in ("Bash", "bash"):
         cmd = tool_input.get("command", "")
-        detail = f"`{cmd[:80]}{'…' if len(cmd) > 80 else ''}`"
+        detail = cmd[:80] + ("…" if len(cmd) > 80 else "")
     elif name in ("Grep", "grep", "Glob", "glob"):
         detail = tool_input.get("pattern", "")
     elif name in ("Agent", "agent"):
@@ -294,9 +298,7 @@ def _summarize_tool(name: str, tool_input: dict) -> str:
         todos = tool_input.get("todos", [])
         detail = f"{len(todos)} item{'s' if len(todos) != 1 else ''}"
 
-    if detail:
-        return f"🔧 `{name}` — {detail}"
-    return f"🔧 `{name}`"
+    return name, detail
 
 
 def _build_prompt(text: str, images: list[str]) -> str:

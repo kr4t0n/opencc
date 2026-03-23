@@ -9,7 +9,7 @@ import aiohttp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
 
-from opencc.adapters.base import IMAdapter, Message, MessageHandler
+from opencc.adapters.base import IMAdapter, Message, MessageHandler, ProgressTask
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,37 @@ class SlackAdapter(IMAdapter):
             blocks=_build_blocks(truncated, table_block),
         )
 
+    async def post_progress(self, channel_id: str, thread_id: str, title: str, tasks: list[ProgressTask]) -> str:
+        resp = await self._app.client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_id,
+            text=title,
+            blocks=[_build_plan_block(title, tasks)],
+        )
+        return resp["ts"]
+
+    async def update_progress(
+        self,
+        channel_id: str,
+        thread_id: str,
+        message_id: str,
+        title: str,
+        tasks: list[ProgressTask],
+        result_text: str | None = None,
+    ) -> None:
+        blocks: list[dict] = [_build_plan_block(title, tasks)]
+        fallback = title
+        if result_text:
+            text, table_block = self._prepare_message(result_text)
+            blocks.extend(_build_blocks(text, table_block))
+            fallback = self.truncate(text)
+        await self._app.client.chat_update(
+            channel=channel_id,
+            ts=message_id,
+            text=fallback,
+            blocks=blocks,
+        )
+
     def _register_listeners(self) -> None:
         @self._app.event("app_mention")
         async def on_mention(event: dict, say) -> None:  # noqa: ANN001
@@ -189,6 +220,46 @@ def _build_blocks(text: str, table_block: dict | None = None) -> list[dict]:
     if table_block is not None:
         blocks.append(table_block)
     return blocks
+
+
+def _rich_text_block(text: str) -> dict:
+    """Build a rich_text block for use inside plan task fields.
+
+    Multi-line text is split into one ``rich_text_section`` per line to
+    avoid exceeding Slack's per-element size limit.
+    """
+    lines = [line for line in text.split("\n") if line]
+    return {
+        "type": "rich_text",
+        "elements": [
+            {
+                "type": "rich_text_section",
+                "elements": [{"type": "text", "text": line}],
+            }
+            for line in lines
+        ],
+    }
+
+
+def _build_plan_block(title: str, tasks: list[ProgressTask]) -> dict:
+    """Build a Slack plan block from a list of ProgressTask items."""
+    plan_tasks: list[dict] = []
+    for task in tasks:
+        pt: dict = {
+            "task_id": task.task_id,
+            "title": task.title,
+            "status": task.status,
+        }
+        if task.details:
+            pt["details"] = _rich_text_block(task.details)
+        if task.output:
+            pt["output"] = _rich_text_block(task.output)
+        plan_tasks.append(pt)
+    return {
+        "type": "plan",
+        "title": title,
+        "tasks": plan_tasks,
+    }
 
 
 def _parse_table_rows(table_text: str) -> tuple[list[str], list[list[str]]] | None:
