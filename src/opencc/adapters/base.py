@@ -49,6 +49,15 @@ class IMAdapter(ABC):
         """Truncate *text* to ``max_message_length``, cutting from the beginning."""
         return truncate_message(text, self.max_message_length)
 
+    def format_message(self, text: str) -> str:
+        """Convert *text* to the platform's native markup format.
+
+        The default implementation returns *text* unchanged.  Subclasses
+        should override this to translate standard Markdown into the IM
+        platform's own formatting (e.g. Slack mrkdwn).
+        """
+        return text
+
     @abstractmethod
     async def start(self, handler: MessageHandler) -> None:
         """Start receiving messages and route them through *handler*.
