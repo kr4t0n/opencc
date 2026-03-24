@@ -97,7 +97,7 @@ class ClaudeSession:
     async def _run(
         self, prompt: str, *, cli_path: str, work_dir: str, cli_args: list[str], extra_args: list[str]
     ) -> str:
-        cmd = [cli_path, *cli_args]
+        cmd = [*shlex.split(cli_path), *cli_args]
         if extra_args:
             cmd.extend(extra_args)
         if self.session_id is not None:
@@ -143,7 +143,7 @@ class ClaudeSession:
     async def _run_streaming(
         self, prompt: str, *, cli_path: str, work_dir: str, cli_args: list[str], extra_args: list[str]
     ) -> AsyncIterator[dict]:
-        cmd = [cli_path, *cli_args]
+        cmd = [*shlex.split(cli_path), *cli_args]
         if extra_args:
             cmd.extend(extra_args)
         if self.session_id is not None:
