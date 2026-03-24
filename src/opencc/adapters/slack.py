@@ -51,17 +51,22 @@ class SlackAdapter(IMAdapter):
             logger.info("Slack adapter stopped")
 
     def _prepare_message(self, text: str) -> tuple[str, dict | None]:
-        """Extract the first markdown table as a Slack table block.
+        """Extract the last markdown table as a Slack table block.
+
+        Slack only supports a single table block per message, so when
+        multiple markdown tables are present only the last one is
+        converted.  Earlier tables remain as markdown text.
 
         Returns (remaining_text, table_block_or_None).
         """
-        table_match = re.search(r"(?:^\|.+\|$\n?){2,}", text, flags=re.MULTILINE)
+        matches = list(re.finditer(r"(?:^\|.+\|$\n?){2,}", text, flags=re.MULTILINE))
 
-        if table_match:
-            table_block = _markdown_table_to_slack_block(table_match.group(0))
+        # Walk backwards to find the last table that parses successfully.
+        for match in reversed(matches):
+            table_block = _markdown_table_to_slack_block(match.group(0))
             if table_block:
-                before = text[: table_match.start()].rstrip("\n")
-                after = text[table_match.end() :].lstrip("\n")
+                before = text[: match.start()].rstrip("\n")
+                after = text[match.end() :].lstrip("\n")
                 text = before + ("\n\n" if before and after else "") + after
                 return text, table_block
 
